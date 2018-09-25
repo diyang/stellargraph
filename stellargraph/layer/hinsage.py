@@ -290,13 +290,15 @@ class HinSAGE:
         ]
 
         # Reshape object per neighbour per node per layer
+        # TODO: We are replacing 0 samples of neighbours with 1 sample of the node 'None"
+        # TODO: in the node samplers. Therefore we have a minimum neighbour shape of 1 here.
         self._neigh_reshape = [
             [
                 [
                     Reshape(
                         (
                             -1,
-                            self.n_samples[depth[i]],
+                            max(self.n_samples[depth[i]], 1),
                             self.dims[layer][self.subtree_schema[neigh_index][0]],
                         )
                     )
@@ -397,7 +399,8 @@ class HinSAGE:
             A list of tuples giving the shape (number of nodes, feature size) for
             the corresponding item in the neighbourhood type tree (self.subtree_schema)
         """
-        neighbor_sizes = list(it.accumulate([1] + self.n_samples, op.mul))
+        n_samples_ex = [max(1, ns) for ns in self.n_samples]
+        neighbor_sizes = list(it.accumulate([1] + n_samples_ex, op.mul))
 
         def get_shape(stree, cnode, level=0):
             adj = stree[cnode][1]

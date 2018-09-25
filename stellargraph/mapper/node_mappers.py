@@ -93,7 +93,7 @@ class NodeSequence(Sequence):
         # Save head node type and generate sampling schema
         self.head_node_types = [head_node_type]
         self._sampling_schema = generator.schema.sampling_layout(
-            self.head_node_types, generator.num_samples
+            self.head_node_types, generator.num_samples_ex
         )
 
     def __len__(self):
@@ -170,6 +170,10 @@ class GraphSAGENodeGenerator:
         self.batch_size = batch_size
         self.name = name
 
+        # Replace all 0 samples by 1 for this final num_samples:
+        # here any layer with 0 samples is replaced with a zero vector
+        self.num_samples_ex = [max(1, ns) for ns in num_samples]
+
         # Check if the graph has features
         G.check_graph_for_ml()
 
@@ -204,6 +208,13 @@ class GraphSAGENodeGenerator:
         """
         node_samples = self.sampler.run(nodes=head_nodes, n=1, n_size=self.num_samples)
 
+        # Replace empty lists with a single None
+        sampled_length = sum(self.num_samples_ex) + 1
+        node_samples = [
+            samples + [None] * (sampled_length - len(samples))
+            for samples in node_samples
+        ]
+
         # Reshape node samples to sensible format
         def get_levels(loc, lsize, samples_per_hop, walks):
             end_loc = loc + lsize
@@ -214,7 +225,7 @@ class GraphSAGENodeGenerator:
                 end_loc, lsize * samples_per_hop[0], samples_per_hop[1:], walks
             )
 
-        nodes_per_hop = get_levels(0, 1, self.num_samples, node_samples)
+        nodes_per_hop = get_levels(0, 1, self.num_samples_ex, node_samples)
         node_type = sampling_schema[0][0][0]
 
         # Get features for sampled nodes
@@ -225,9 +236,9 @@ class GraphSAGENodeGenerator:
 
         # Resize features to (batch_size, n_neighbours, feature_size)
         batch_feats = [
-            np.reshape(a, (len(head_nodes), -1 if np.size(a) > 0 else 0, a.shape[1]))
-            for a in batch_feats
+            np.reshape(a, (len(head_nodes), -1, a.shape[1])) for a in batch_feats
         ]
+
         return batch_feats
 
     def flow(self, node_ids, targets=None):
@@ -309,6 +320,10 @@ class HinSAGENodeGenerator:
         self.batch_size = batch_size
         self.name = name
 
+        # Replace all 0 samples by 1 for this final num_samples:
+        # here any layer with 0 samples is replaced with a zero vector
+        self.num_samples_ex = [max(1, ns) for ns in num_samples]
+
         # We require a StellarGraph
         if not isinstance(G, StellarGraphBase):
             raise TypeError("Graph must be a StellarGraph object.")
@@ -342,6 +357,15 @@ class HinSAGENodeGenerator:
         # Get sampled nodes
         node_samples = self.sampler.run(nodes=head_nodes, n=1, n_size=self.num_samples)
 
+        # Replace empty lists with a single None, and extend to the correct size
+        # TODO: This is not the correct shape for all problems.
+        sampled_length = len(sampling_schema[0])
+        node_samples = [
+            [s if len(s) > 0 else [None] for s in samples]
+            + [[None]] * (sampled_length - len(samples))
+            for samples in node_samples
+        ]
+
         # Reshape node samples to the required format for the HinSAGE model
         # This requires grouping the sampled nodes by edge type and in order
         nodes_by_type = [
@@ -350,6 +374,7 @@ class HinSAGENodeGenerator:
                 reduce(
                     operator.concat,
                     (samples[ks] for samples in node_samples for ks in indices),
+                    [],
                 ),
             )
             for nt, indices in sampling_schema[0]
@@ -363,10 +388,8 @@ class HinSAGENodeGenerator:
 
         # Resize features to (batch_size, n_neighbours, feature_size)
         batch_feats = [
-            np.reshape(a, (len(head_nodes), -1 if np.size(a) > 0 else 0, a.shape[1]))
-            for a in batch_feats
+            np.reshape(a, (len(head_nodes), -1, a.shape[1])) for a in batch_feats
         ]
-
         return batch_feats
 
     def flow(self, node_ids, targets=None):

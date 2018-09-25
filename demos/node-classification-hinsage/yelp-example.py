@@ -89,7 +89,7 @@ def train(
     # Split "user" nodes into train/test
     # Split nodes into train/test using stratification.
     train_targets, test_targets = model_selection.train_test_split(
-        user_targets, train_size=0.25, test_size=None
+        user_targets, train_size=0.1, test_size=None, random_state=21382
     )
 
     # The mapper feeds data from sampled subgraph to GraphSAGE model

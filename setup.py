@@ -29,7 +29,7 @@ REQUIRES = [
     "scikit_learn>=0.18",
     "matplotlib>=2.2",
     "gensim>=3.4.0",
-    "pandas>=0.23"
+    "pandas>=0.20"
 ]
 
 EXTRAS_REQURES = {"demos": ["numba"], "test": ["pytest", "pandas"]}
